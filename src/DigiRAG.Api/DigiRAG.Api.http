@@ -1,0 +1,6 @@
+@DigiRAG.Api_HostAddress = http://localhost:5189
+
+GET {{DigiRAG.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

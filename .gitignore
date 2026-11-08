@@ -1,0 +1,86 @@
+# ====================================================================
+# .NET Core & Visual Studio
+# ====================================================================
+**/bin/
+**/obj/
+**/out/
+*.user
+*.userosscache
+*.suo
+*.userprefs
+*.ide
+*.sln.docstates
+.vs/
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Build and Test Outputs
+msbuild.log
+msbuild.err
+msbuild.binlog
+*.trx
+*.coverage
+*.coveragexml
+TestResults/
+
+# ====================================================================
+# Node.js & Angular Frontend
+# ====================================================================
+**/node_modules/
+**/dist/
+**/.angular/
+.npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.eslintcache
+
+# ====================================================================
+# Secrets, Environment & Local Configuration
+# ====================================================================
+# .env
+# .env.local
+# .env.*.local
+# *.local.json
+# appsettings.Production.json
+# appsettings.*.local.json
+
+# Keep template and example files
+# !.env.example
+# !.env.template
+
+# ====================================================================
+# Local Uploads & Storage Data
+# ====================================================================
+App_Data/
+Storage/
+uploads/
+*.tmp
+*.bak
+
+# ====================================================================
+# Operating System Files
+# ====================================================================
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Linux
+*~
+.directory

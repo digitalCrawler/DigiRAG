@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DigiRAG.Api/DigiRAG.Api.csproj" />
+    <Project Path="src/DigiRAG.Application/DigiRAG.Application.csproj" />
+    <Project Path="src/DigiRAG.Domain/DigiRAG.Domain.csproj" />
+    <Project Path="src/DigiRAG.Infrastructure/DigiRAG.Infrastructure.csproj" />
+    <Project Path="src/DigiRAG.Worker/DigiRAG.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DigiRAG.UnitTests/DigiRAG.UnitTests.csproj" />
+  </Folder>
+</Solution>

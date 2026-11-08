@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: digirag-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: digirag_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/01_init_schema.sql:/docker-entrypoint-initdb.d/01_init_schema.sql
+
+  api:
+    build:
+      context: .
+      dockerfile: src/DigiRAG.Api/Dockerfile
+    container_name: digirag-api
+    restart: always
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=digirag_db;Username=postgres;Password=postgrespassword;
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+
+  worker:
+    build:
+      context: .
+      dockerfile: src/DigiRAG.Worker/Dockerfile
+    container_name: digirag-worker
+    restart: always
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=digirag_db;Username=postgres;Password=postgrespassword;
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:

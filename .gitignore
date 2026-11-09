@@ -58,8 +58,9 @@ pnpm-debug.log*
 # Local Uploads & Storage Data
 # ====================================================================
 App_Data/
-Storage/
-uploads/
+/Storage/
+/uploads/
+!src/**/Storage/
 *.tmp
 *.bak
 

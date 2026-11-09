@@ -14,6 +14,7 @@ using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace DigiRAG.Infrastructure;
 
@@ -44,7 +45,8 @@ public static class DependencyInjection
 
         // 3. File Storage
         var storagePath = configuration["Storage:LocalPath"];
-        services.AddSingleton<IFileStorageService>(new LocalFileStorageService(storagePath));
+        services.AddSingleton<IFileStorageService>(sp =>
+            new LocalFileStorageService(storagePath, sp.GetService<ILogger<LocalFileStorageService>>()));
 
         // 4. Document Extractors
         services.AddSingleton<PdfDocumentExtractor>();

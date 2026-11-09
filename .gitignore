@@ -85,3 +85,6 @@ Icon
 # Linux
 *~
 .directory
+
+# Generated: Angular build output copied into the API at publish time
+src/DigiRAG.Api/wwwroot/

@@ -64,6 +64,41 @@ namespace DigiRAG.Infrastructure.Persistence.Migrations
                     b.ToTable("chat_citations", (string)null);
                 });
 
+            modelBuilder.Entity("DigiRAG.Domain.Entities.ChatFeedback", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ChatMessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ChatSessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Comment")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsPositive")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChatMessageId");
+
+                    b.HasIndex("ChatSessionId");
+
+                    b.HasIndex("TenantId", "ChatSessionId");
+
+                    b.ToTable("chat_feedbacks", (string)null);
+                });
+
             modelBuilder.Entity("DigiRAG.Domain.Entities.ChatMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -345,6 +380,23 @@ namespace DigiRAG.Infrastructure.Persistence.Migrations
                     b.Navigation("Chunk");
 
                     b.Navigation("Document");
+                });
+
+            modelBuilder.Entity("DigiRAG.Domain.Entities.ChatFeedback", b =>
+                {
+                    b.HasOne("DigiRAG.Domain.Entities.ChatMessage", "ChatMessage")
+                        .WithMany()
+                        .HasForeignKey("ChatMessageId");
+
+                    b.HasOne("DigiRAG.Domain.Entities.ChatSession", "ChatSession")
+                        .WithMany()
+                        .HasForeignKey("ChatSessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ChatMessage");
+
+                    b.Navigation("ChatSession");
                 });
 
             modelBuilder.Entity("DigiRAG.Domain.Entities.ChatMessage", b =>

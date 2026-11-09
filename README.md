@@ -10,7 +10,7 @@ DigiRAG is a high-performance, enterprise-grade Retrieval-Augmented Generation (
 c:\Personal\RAG\
 ├── DigiRAG.slnx                 # Modern .NET solution file
 ├── database/
-│   └── 01_init_schema.sql       # PostgreSQL 18 + pgvector schema with HNSW index & RLS
+│   └── migrate.sql              # Generated: dotnet ef migrations script --idempotent
 ├── src/
 │   ├── DigiRAG.Domain/          # Pure Domain Entities, Enums & Value Objects
 │   │   ├── Entities/            # Tenant, KnowledgeBase, Document, DocumentChunk, ChatSession, Citations

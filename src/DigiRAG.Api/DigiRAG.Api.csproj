@@ -4,6 +4,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Angular client integration -->
+    <SpaRoot>../DigiRAG.Client/</SpaRoot>
+    <SpaDist>$(SpaRoot)dist/digi-rag-client/browser/</SpaDist>
+    <!-- Set -p:BuildAngularClient=false to publish the API without the UI. -->
+    <BuildAngularClient Condition="'$(BuildAngularClient)' == ''">true</BuildAngularClient>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,5 +27,68 @@
   <ItemGroup>
     <ProjectReference Include="..\DigiRAG.Infrastructure\DigiRAG.Infrastructure.csproj" />
   </ItemGroup>
+
+  <!--
+    Builds the Angular client and publishes it into wwwroot so the API serves the UI
+    on the same origin. If npm is unavailable on the build machine the publish still
+    succeeds - it just ships the API without the UI, which is far better than failing
+    the whole deployment.
+  -->
+  <Target Name="ProbeNpm" Condition="'$(BuildAngularClient)' == 'true' AND Exists('$(SpaRoot)package.json')">
+    <Exec Command="npm --version"
+          ContinueOnError="true"
+          StandardOutputImportance="low"
+          StandardErrorImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="NpmExitCode" />
+    </Exec>
+    <Warning Condition="'$(NpmExitCode)' != '0'"
+             Text="npm was not found on PATH. Publishing the API without the Angular UI. Install Node.js 20+ on the build machine, or build the client separately into src/DigiRAG.Api/wwwroot." />
+  </Target>
+
+  <Target Name="PublishAngularClient"
+          AfterTargets="ComputeFilesToPublish"
+          DependsOnTargets="ProbeNpm"
+          Condition="'$(BuildAngularClient)' == 'true' AND Exists('$(SpaRoot)package.json')">
+
+    <!--
+      ContinueOnError is deliberate on both steps: a broken npm install or a failing
+      Angular compile must not fail the publish and trigger a deployment rollback of a
+      perfectly good API. A warning plus an API-only deployment is the better outcome.
+    -->
+    <Exec Condition="'$(NpmExitCode)' == '0'"
+          WorkingDirectory="$(SpaRoot)"
+          Command="npm install --no-audit --no-fund"
+          ContinueOnError="true">
+      <Output TaskParameter="ExitCode" PropertyName="NpmInstallExitCode" />
+    </Exec>
+
+    <Exec Condition="'$(NpmInstallExitCode)' == '0'"
+          WorkingDirectory="$(SpaRoot)"
+          Command="npm run build -- --configuration production"
+          ContinueOnError="true">
+      <Output TaskParameter="ExitCode" PropertyName="NgBuildExitCode" />
+    </Exec>
+
+    <!-- Only ship the UI if the build actually produced an entry point. -->
+    <PropertyGroup>
+      <HasAngularBuildOutput Condition="Exists('$(SpaDist)index.html')">true</HasAngularBuildOutput>
+    </PropertyGroup>
+
+    <Warning Condition="'$(NpmExitCode)' == '0' AND '$(HasAngularBuildOutput)' != 'true'"
+             Text="The Angular client failed to build (npm install=$(NpmInstallExitCode), ng build=$(NgBuildExitCode)). Publishing the API without the UI; '/' will return the API status JSON instead of the app." />
+
+    <ItemGroup Condition="'$(HasAngularBuildOutput)' == 'true'">
+      <AngularDistFiles Include="$(SpaDist)**/*" />
+      <ResolvedFileToPublish Include="@(AngularDistFiles->'%(FullPath)')" Exclude="@(ResolvedFileToPublish)">
+        <RelativePath>wwwroot/%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+
+    <Message Condition="'$(HasAngularBuildOutput)' == 'true'"
+             Importance="high"
+             Text="Angular client published to wwwroot (@(AngularDistFiles->Count()) files)." />
+  </Target>
 
 </Project>

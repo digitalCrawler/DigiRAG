@@ -92,7 +92,10 @@ export interface ChatMessageUI {
                 <div class="kb-title">{{ kb.name }}</div>
                 <div class="kb-desc">{{ kb.description || 'General documents' }}</div>
               </div>
-              <div *ngIf="knowledgeBases().length === 0" class="empty-state">
+              <div *ngIf="apiError()" class="empty-state api-error">
+                {{ apiError() }}
+              </div>
+              <div *ngIf="!apiError() && knowledgeBases().length === 0" class="empty-state">
                 No Knowledge Bases found. Create one to begin.
               </div>
             </div>
@@ -250,6 +253,8 @@ export interface ChatMessageUI {
     .kb-item.active { border-color: #38bdf8; background: #075985; }
     .kb-title { font-weight: 600; font-size: 14px; }
     .kb-desc { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+    .empty-state { font-size: 12px; color: #94a3b8; padding: 4px 0; line-height: 1.5; }
+    .api-error { color: #f87171; border-left: 3px solid #f87171; padding-left: 10px; }
 
     .upload-dropzone { border: 2px dashed #475569; border-radius: 6px; padding: 12px; text-align: center; font-size: 12px; color: #94a3b8; margin-bottom: 12px; }
     .document-list { display: flex; flex-direction: column; gap: 8px; }
@@ -318,6 +323,9 @@ export class AppComponent implements OnInit {
 
   tenants = signal<Tenant[]>([]);
   selectedTenantId = signal<string>('');
+
+  // Surfaces API failures instead of leaving the UI looking merely empty.
+  apiError = signal<string>('');
   
   knowledgeBases = signal<KnowledgeBase[]>([]);
   selectedKbId = signal<string>('');
@@ -348,6 +356,7 @@ export class AppComponent implements OnInit {
   }
 
   loadTenants() {
+    this.apiError.set('');
     this.http.get<Tenant[]>(`${this.apiUrl}/tenants`).subscribe({
       next: (list) => {
         this.tenants.set(list);
@@ -356,12 +365,12 @@ export class AppComponent implements OnInit {
           this.loadKnowledgeBases();
         }
       },
-      error: () => {
-        // Fallback demo tenant if DB not yet seeded
-        const demo: Tenant = { id: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d', name: 'Acme Corporation', slug: 'acme' };
-        this.tenants.set([demo]);
-        this.selectedTenantId.set(demo.id);
-        this.loadKnowledgeBases();
+      error: (err) => {
+        // Do NOT invent a tenant here. The previous fallback fabricated "Acme Corporation"
+        // client-side, so a totally unreachable API looked like a working app with an empty
+        // knowledge base - which is exactly what made this hard to diagnose.
+        this.tenants.set([]);
+        this.apiError.set(`Cannot reach the API at ${this.apiUrl} (${err.status || 'network error'}).`);
       }
     });
   }
@@ -395,6 +404,12 @@ export class AppComponent implements OnInit {
           this.selectedKbId.set('');
           this.documents.set([]);
         }
+      },
+      error: (err) => {
+        // Previously there was no error handler at all, so a failed request was
+        // indistinguishable from "no knowledge bases exist".
+        this.knowledgeBases.set([]);
+        this.apiError.set(`Failed to load knowledge bases (${err.status || 'network error'}).`);
       }
     });
   }
@@ -499,6 +514,11 @@ export class AppComponent implements OnInit {
         })
       });
 
+      if (!response.ok) {
+        // Without this, a 500 with an empty body produced a blank assistant bubble
+        // and no indication that anything had gone wrong.
+        throw new Error(`API returned HTTP ${response.status} ${response.statusText}`);
+      }
       if (!response.body) throw new Error('No response stream');
 
       const reader = response.body.getReader();
@@ -528,6 +548,14 @@ export class AppComponent implements OnInit {
                 this.chatMessages.update(msgs => {
                   const copy = [...msgs];
                   copy[assistantMsgIndex].citations = evt.Citations;
+                  return copy;
+                });
+              } else if (evt.Type === 'error') {
+                // The server now reports retrieval/model failures in-stream rather than
+                // dropping the connection with a bare 500.
+                this.chatMessages.update(msgs => {
+                  const copy = [...msgs];
+                  copy[assistantMsgIndex].content += `\n[Server error] ${evt.Content}`;
                   return copy;
                 });
               }

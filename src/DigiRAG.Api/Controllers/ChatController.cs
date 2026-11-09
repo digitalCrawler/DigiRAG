@@ -14,15 +14,18 @@ public class ChatController : ControllerBase
     private readonly IChatService _chatService;
     private readonly IApplicationDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
+    private readonly ILogger<ChatController> _logger;
 
     public ChatController(
         IChatService chatService,
         IApplicationDbContext dbContext,
-        ITenantContext tenantContext)
+        ITenantContext tenantContext,
+        ILogger<ChatController> logger)
     {
         _chatService = chatService;
         _dbContext = dbContext;
         _tenantContext = tenantContext;
+        _logger = logger;
     }
 
     private Guid RequireTenantId()
@@ -92,12 +95,42 @@ public class ChatController : ControllerBase
         Response.ContentType = "text/event-stream";
         Response.Headers.CacheControl = "no-cache";
         Response.Headers.Connection = "keep-alive";
+        // Tells nginx/Caddy-style reverse proxies not to buffer the response, which would
+        // otherwise hold the whole stream until completion and look like a hang.
+        Response.Headers["X-Accel-Buffering"] = "no";
 
-        await foreach (var evt in _chatService.StreamChatResponseAsync(tenantId, request, ct))
+        try
         {
-            var json = JsonSerializer.Serialize(evt);
-            await Response.WriteAsync($"data: {json}\n\n", ct);
-            await Response.Body.FlushAsync(ct);
+            await foreach (var evt in _chatService.StreamChatResponseAsync(tenantId, request, ct))
+            {
+                var json = JsonSerializer.Serialize(evt);
+                await Response.WriteAsync($"data: {json}\n\n", ct);
+                await Response.Body.FlushAsync(ct);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The browser navigated away or hit Stop. Not an error.
+        }
+        catch (Exception ex)
+        {
+            // Retrieval needs an embedding from the configured AI provider before it touches
+            // the database, so an unreachable model endpoint surfaces here. Without this the
+            // client gets a bare HTTP 500 with an empty body and no way to tell why.
+            _logger.LogError(ex,
+                "Chat stream failed for tenant {TenantId}. Check AiSettings:ActiveProvider and that the model endpoint is reachable.",
+                tenantId);
+
+            var errorEvent = JsonSerializer.Serialize(new
+            {
+                Type = "error",
+                Content = $"{ex.GetType().Name}: {ex.Message}"
+            });
+
+            // CancellationToken.None: ct may already be cancelled, and this last write is
+            // the only thing that tells the user what went wrong.
+            await Response.WriteAsync($"data: {errorEvent}\n\n", CancellationToken.None);
+            await Response.Body.FlushAsync(CancellationToken.None);
         }
     }
 }

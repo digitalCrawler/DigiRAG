@@ -42,7 +42,19 @@ public class AzureOpenAiOptions
 public class GeminiOptions
 {
     public string ApiKey { get; set; } = string.Empty;
-    public string ChatModel { get; set; } = "gemini-1.5-flash";
-    public string EmbeddingModel { get; set; } = "text-embedding-004";
+    public string ChatModel { get; set; } = "gemini-3.8-flash";
+
+    /// <summary>
+    /// Gemini embedding model. Produces 3072-dimension vectors by default; the
+    /// value of <see cref="EmbeddingDimensions"/> is sent as an explicit output
+    /// size so the result matches the pgvector column width.
+    /// </summary>
+    public string EmbeddingModel { get; set; } = "gemini-embedding-2";
+
+    /// <summary>
+    /// Must match the <c>vector(n)</c> column width on DocumentChunk.Embedding
+    /// (currently 768). gemini-embedding-2 supports 128-3072 and L2-normalizes
+    /// truncated outputs automatically.
+    /// </summary>
     public int EmbeddingDimensions { get; set; } = 768;
 }

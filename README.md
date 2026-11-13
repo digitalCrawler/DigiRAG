@@ -43,7 +43,7 @@ In `src/DigiRAG.Api/appsettings.json`, you can switch between AI providers by si
 ```json
 {
   "AiSettings": {
-    "ActiveProvider": "Local", // "Local" | "Gemini" | "OpenAI" | "AzureOpenAI"
+    "ActiveProvider": "Gemini", // "Local" | "Gemini" | "OpenAI" | "AzureOpenAI"
     "Local": {
       "Endpoint": "http://localhost:11434",
       "ChatModel": "llama3.2",
@@ -52,8 +52,8 @@ In `src/DigiRAG.Api/appsettings.json`, you can switch between AI providers by si
     },
     "Gemini": {
       "ApiKey": "YOUR_GEMINI_API_KEY",
-      "ChatModel": "gemini-1.5-flash",
-      "EmbeddingModel": "text-embedding-004",
+      "ChatModel": "gemini-3.8-flash",
+      "EmbeddingModel": "gemini-embedding-2",
       "EmbeddingDimensions": 768
     },
     "OpenAI": {
@@ -73,6 +73,20 @@ In `src/DigiRAG.Api/appsettings.json`, you can switch between AI providers by si
 }
 ```
 
+> **Embedding dimensions must match the database.** `DocumentChunk.Embedding` is a
+> `vector(768)` column, so `EmbeddingDimensions` has to stay at `768` for whichever
+> provider is active. `gemini-embedding-2` natively returns 3072 dimensions, so the
+> configured value is sent as an explicit output size (Gemini L2-normalizes the
+> truncated vector automatically). Switching to a provider with a different width
+> (e.g. OpenAI at 1536) requires a migration that widens the column **and**
+> re-embedding every existing chunk, since vectors from different models are not
+> comparable.
+
+> **Gemini API key.** Keep `ApiKey` out of `appsettings.json` and supply it via the
+> `AiSettings__Gemini__ApiKey` environment variable. Get a key from
+> [Google AI Studio](https://aistudio.google.com/apikey). If the key is missing,
+> the first chat or ingestion request fails with an explicit configuration error.
+
 ---
 
 ## 🚀 Getting Started
@@ -86,8 +100,8 @@ Ensure the Windows service is running in `services.msc`:
 
 *On first startup, the API automatically runs `DbInitializer` which creates the database, enables `vector`, creates tables, and seeds a starter Tenant and Knowledge Base!*
 
-### 2. Run Local Model (Ollama)
-If using the Local provider:
+### 2. Run Local Model (Ollama) — optional
+Only needed if you set `ActiveProvider` back to `Local`; the default is Gemini:
 ```bash
 ollama run llama3.2
 ollama pull nomic-embed-text

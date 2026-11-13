@@ -102,23 +102,38 @@ public class ModelProviderFactory : IAiModelFactory
         return client.AsEmbeddingGenerator(_settings.AzureOpenAI.EmbeddingDeploymentName);
     }
 
+    // Google exposes an OpenAI-compatible REST surface for the Gemini API,
+    // which lets the OpenAI client be reused for both chat and embeddings.
+    private static readonly Uri GeminiOpenAiEndpoint =
+        new("https://generativelanguage.googleapis.com/v1beta/openai/");
+
+    private OpenAIClient CreateGeminiClient()
+    {
+        var apiKey = _settings.Gemini.ApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new InvalidOperationException(
+                "Gemini is the active AI provider but no API key is configured. " +
+                "Set AiSettings:Gemini:ApiKey (environment variable " +
+                "AiSettings__Gemini__ApiKey) to a Google AI Studio key.");
+        }
+
+        var clientOptions = new OpenAIClientOptions { Endpoint = GeminiOpenAiEndpoint };
+        return new OpenAIClient(new ApiKeyCredential(apiKey), clientOptions);
+    }
+
     private IChatClient CreateGeminiChatClient()
     {
-        // Google Gemini supports OpenAI-compatible REST endpoint
-        var endpoint = new Uri("https://generativelanguage.googleapis.com/v1beta/openai/");
-        var apiKey = string.IsNullOrWhiteSpace(_settings.Gemini.ApiKey) ? "placeholder" : _settings.Gemini.ApiKey;
-        var clientOptions = new OpenAIClientOptions { Endpoint = endpoint };
-        var client = new OpenAIClient(new ApiKeyCredential(apiKey), clientOptions);
-        return client.AsChatClient(_settings.Gemini.ChatModel);
+        return CreateGeminiClient().AsChatClient(_settings.Gemini.ChatModel);
     }
 
     private IEmbeddingGenerator<string, Embedding<float>> CreateGeminiEmbeddingGenerator()
     {
-        var endpoint = new Uri("https://generativelanguage.googleapis.com/v1beta/openai/");
-        var apiKey = string.IsNullOrWhiteSpace(_settings.Gemini.ApiKey) ? "placeholder" : _settings.Gemini.ApiKey;
-        var clientOptions = new OpenAIClientOptions { Endpoint = endpoint };
-        var client = new OpenAIClient(new ApiKeyCredential(apiKey), clientOptions);
-        return client.AsEmbeddingGenerator(_settings.Gemini.EmbeddingModel);
+        // The dimension count is passed explicitly: Gemini embedding models
+        // return 3072-dimension vectors unless a smaller output size is
+        // requested, which would not fit the vector(768) column.
+        return CreateGeminiClient()
+            .AsEmbeddingGenerator(_settings.Gemini.EmbeddingModel, _settings.Gemini.EmbeddingDimensions);
     }
 
     #endregion

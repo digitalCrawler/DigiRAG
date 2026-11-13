@@ -59,7 +59,7 @@ public class ModelProviderFactory : IAiModelFactory
         var endpoint = _settings.Local.Endpoint.TrimEnd('/') + "/v1";
         var clientOptions = new OpenAIClientOptions { Endpoint = new Uri(endpoint) };
         var client = new OpenAIClient(new ApiKeyCredential("ollama"), clientOptions);
-        return client.AsChatClient(_settings.Local.ChatModel);
+        return client.GetChatClient(_settings.Local.ChatModel).AsIChatClient();
     }
 
     private IEmbeddingGenerator<string, Embedding<float>> CreateLocalEmbeddingGenerator()
@@ -67,21 +67,21 @@ public class ModelProviderFactory : IAiModelFactory
         var endpoint = _settings.Local.Endpoint.TrimEnd('/') + "/v1";
         var clientOptions = new OpenAIClientOptions { Endpoint = new Uri(endpoint) };
         var client = new OpenAIClient(new ApiKeyCredential("ollama"), clientOptions);
-        return client.AsEmbeddingGenerator(_settings.Local.EmbeddingModel);
+        return client.GetEmbeddingClient(_settings.Local.EmbeddingModel).AsIEmbeddingGenerator();
     }
 
     private IChatClient CreateOpenAiChatClient()
     {
         var apiKey = string.IsNullOrWhiteSpace(_settings.OpenAI.ApiKey) ? "placeholder" : _settings.OpenAI.ApiKey;
         var client = new OpenAIClient(new ApiKeyCredential(apiKey));
-        return client.AsChatClient(_settings.OpenAI.ChatModel);
+        return client.GetChatClient(_settings.OpenAI.ChatModel).AsIChatClient();
     }
 
     private IEmbeddingGenerator<string, Embedding<float>> CreateOpenAiEmbeddingGenerator()
     {
         var apiKey = string.IsNullOrWhiteSpace(_settings.OpenAI.ApiKey) ? "placeholder" : _settings.OpenAI.ApiKey;
         var client = new OpenAIClient(new ApiKeyCredential(apiKey));
-        return client.AsEmbeddingGenerator(_settings.OpenAI.EmbeddingModel);
+        return client.GetEmbeddingClient(_settings.OpenAI.EmbeddingModel).AsIEmbeddingGenerator();
     }
 
     private IChatClient CreateAzureOpenAiChatClient()
@@ -90,7 +90,7 @@ public class ModelProviderFactory : IAiModelFactory
         var apiKey = string.IsNullOrWhiteSpace(_settings.AzureOpenAI.ApiKey) ? "placeholder" : _settings.AzureOpenAI.ApiKey;
         var clientOptions = new OpenAIClientOptions { Endpoint = string.IsNullOrEmpty(endpoint) ? null : new Uri(endpoint) };
         var client = new OpenAIClient(new ApiKeyCredential(apiKey), clientOptions);
-        return client.AsChatClient(_settings.AzureOpenAI.ChatDeploymentName);
+        return client.GetChatClient(_settings.AzureOpenAI.ChatDeploymentName).AsIChatClient();
     }
 
     private IEmbeddingGenerator<string, Embedding<float>> CreateAzureOpenAiEmbeddingGenerator()
@@ -99,7 +99,7 @@ public class ModelProviderFactory : IAiModelFactory
         var apiKey = string.IsNullOrWhiteSpace(_settings.AzureOpenAI.ApiKey) ? "placeholder" : _settings.AzureOpenAI.ApiKey;
         var clientOptions = new OpenAIClientOptions { Endpoint = string.IsNullOrEmpty(endpoint) ? null : new Uri(endpoint) };
         var client = new OpenAIClient(new ApiKeyCredential(apiKey), clientOptions);
-        return client.AsEmbeddingGenerator(_settings.AzureOpenAI.EmbeddingDeploymentName);
+        return client.GetEmbeddingClient(_settings.AzureOpenAI.EmbeddingDeploymentName).AsIEmbeddingGenerator();
     }
 
     private IChatClient CreateGeminiChatClient()
@@ -109,7 +109,7 @@ public class ModelProviderFactory : IAiModelFactory
         var apiKey = string.IsNullOrWhiteSpace(_settings.Gemini.ApiKey) ? "placeholder" : _settings.Gemini.ApiKey;
         var clientOptions = new OpenAIClientOptions { Endpoint = endpoint };
         var client = new OpenAIClient(new ApiKeyCredential(apiKey), clientOptions);
-        return client.AsChatClient(_settings.Gemini.ChatModel);
+        return client.GetChatClient(_settings.Gemini.ChatModel).AsIChatClient();
     }
 
     private IEmbeddingGenerator<string, Embedding<float>> CreateGeminiEmbeddingGenerator()
@@ -118,7 +118,7 @@ public class ModelProviderFactory : IAiModelFactory
         var apiKey = string.IsNullOrWhiteSpace(_settings.Gemini.ApiKey) ? "placeholder" : _settings.Gemini.ApiKey;
         var clientOptions = new OpenAIClientOptions { Endpoint = endpoint };
         var client = new OpenAIClient(new ApiKeyCredential(apiKey), clientOptions);
-        return client.AsEmbeddingGenerator(_settings.Gemini.EmbeddingModel);
+        return client.GetEmbeddingClient(_settings.Gemini.EmbeddingModel).AsIEmbeddingGenerator();
     }
 
     #endregion

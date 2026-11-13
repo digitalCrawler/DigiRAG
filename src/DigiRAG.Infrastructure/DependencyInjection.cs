@@ -15,6 +15,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Npgsql;
+using Pgvector.Npgsql;
 
 namespace DigiRAG.Infrastructure;
 
@@ -32,9 +34,20 @@ public static class DependencyInjection
 
         services.AddScoped<ITenantContext, TenantContext>();
 
+        // pgvector's type handler has to be registered on the Npgsql data source, not only on
+        // the EF model. With EF-only registration, reading and writing mapped entity properties
+        // works, but passing a Vector as a query parameter - which the CosineDistance similarity
+        // search does - throws:
+        //   InvalidCastException: Writing values of 'Pgvector.Vector' is not supported for
+        //   parameters having no NpgsqlDbType or DataTypeName.
+        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+        dataSourceBuilder.UseVector();
+        var dataSource = dataSourceBuilder.Build();
+        services.AddSingleton(dataSource);
+
         services.AddDbContext<ApplicationDbContext>((sp, options) =>
         {
-            options.UseNpgsql(connectionString, o =>
+            options.UseNpgsql(dataSource, o =>
             {
                 o.UseVector();
                 o.MigrationsAssembly(typeof(ApplicationDbContext).Assembly.FullName);

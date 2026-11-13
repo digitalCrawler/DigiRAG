@@ -8,6 +8,7 @@ using DigiRAG.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace DigiRAG.Infrastructure.Retrieval;
 
@@ -18,18 +19,21 @@ public class ChatService : IChatService
     private readonly IRerankerService _rerankerService;
     private readonly IAiModelFactory _aiModelFactory;
     private readonly ILogger<ChatService> _logger;
+    private readonly AiSettings _aiSettings;
 
     public ChatService(
         IApplicationDbContext dbContext,
         IRetrievalService retrievalService,
         IRerankerService rerankerService,
         IAiModelFactory aiModelFactory,
+        IOptions<AiSettings> aiSettings,
         ILogger<ChatService> logger)
     {
         _dbContext = dbContext;
         _retrievalService = retrievalService;
         _rerankerService = rerankerService;
         _aiModelFactory = aiModelFactory;
+        _aiSettings = aiSettings.Value;
         _logger = logger;
     }
 
@@ -46,11 +50,13 @@ public class ChatService : IChatService
             limit: 15,
             cancellationToken: cancellationToken);
 
-        // 2. Rerank to top evidence
+        // 2. Rerank to top evidence.
+        // Each chunk added here costs roughly 500 prompt tokens on every question, so the
+        // count is configurable (AiSettings:MaxContextChunks) for rate-limited providers.
         var topEvidence = await _rerankerService.RerankAsync(
             request.Message,
             candidates,
-            topK: 5,
+            topK: Math.Max(1, _aiSettings.MaxContextChunks),
             cancellationToken: cancellationToken);
 
         // 3. Prepare Citations

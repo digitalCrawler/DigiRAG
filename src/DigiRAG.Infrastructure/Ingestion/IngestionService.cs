@@ -4,6 +4,7 @@ using DigiRAG.Application.Ingestion;
 using DigiRAG.Domain.Entities;
 using DigiRAG.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Pgvector;
 
@@ -70,6 +71,12 @@ public class IngestionService : IIngestionService
 
             // 4. Batch Embeddings
             var embeddingGenerator = _aiModelFactory.GetEmbeddingGenerator();
+
+            // Must match the vector(768) column; gemini-embedding-001 otherwise returns 3072.
+            var embeddingOptions = new EmbeddingGenerationOptions
+            {
+                Dimensions = _aiModelFactory.GetCurrentEmbeddingDimensions()
+            };
             var chunkTexts = chunks.Select(c => c.Content).ToList();
 
             // Generate embeddings in batches of 16
@@ -77,7 +84,7 @@ public class IngestionService : IIngestionService
             for (var i = 0; i < chunks.Count; i += batchSize)
             {
                 var batch = chunkTexts.Skip(i).Take(batchSize).ToList();
-                var embeddings = await embeddingGenerator.GenerateAsync(batch, cancellationToken: cancellationToken);
+                var embeddings = await embeddingGenerator.GenerateAsync(batch, embeddingOptions, cancellationToken);
 
                 for (var j = 0; j < batch.Count; j++)
                 {

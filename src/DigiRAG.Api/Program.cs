@@ -1,5 +1,6 @@
 using DigiRAG.Api.Middleware;
 using DigiRAG.Infrastructure;
+using DigiRAG.Application.Common.Interfaces;
 using DigiRAG.Infrastructure.Persistence;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
@@ -111,16 +112,25 @@ app.MapControllers();
 // ---------------------------------------------------------------------------
 // Liveness / readiness: a single URL that answers "is this deploy actually working?"
 // ---------------------------------------------------------------------------
-app.MapGet("/health", async (ApplicationDbContext db) =>
+app.MapGet("/health", async (ApplicationDbContext db, IFileStorageService storage) =>
 {
+    // Uploads fail with an opaque 500 when this directory is not writable, so report it here.
+    var storageWritable = storage.TryVerifyWritable(out var storageError);
+
     try
     {
         var pending = (await db.Database.GetPendingMigrationsAsync()).ToList();
         return Results.Ok(new
         {
-            status = pending.Count == 0 ? "healthy" : "degraded",
+            status = pending.Count == 0 && storageWritable ? "healthy" : "degraded",
             database = "connected",
             pendingMigrations = pending,
+            storage = new
+            {
+                path = storage.StorageRoot,
+                writable = storageWritable,
+                error = storageError
+            },
             spa = hasSpa ? "served from wwwroot" : "not deployed",
             utc = DateTime.UtcNow
         });

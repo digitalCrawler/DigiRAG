@@ -470,7 +470,14 @@ export class AppComponent implements OnInit {
       },
       error: (err) => {
         this.isUploading.set(false);
-        alert('Upload failed: ' + (err.error || err.message));
+        // The API returns a structured body for storage failures; err.error is then an
+        // object, and string concatenation would have shown "[object Object]".
+        const body = err.error;
+        const detail = typeof body === 'string'
+          ? body
+          : body?.detail || body?.error || err.message;
+        const hint = body?.hint ? `\n\n${body.hint}` : '';
+        alert(`Upload failed: ${detail}${hint}`);
       }
     });
   }

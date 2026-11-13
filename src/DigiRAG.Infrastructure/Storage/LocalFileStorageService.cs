@@ -1,3 +1,4 @@
+using DigiRAG.Application.Common.Exceptions;
 using DigiRAG.Application.Common.Interfaces;
 using Microsoft.Extensions.Logging;
 
@@ -8,53 +9,85 @@ public class LocalFileStorageService : IFileStorageService
     private readonly string _storageRoot;
     private readonly ILogger<LocalFileStorageService>? _logger;
 
+    public string StorageRoot => _storageRoot;
+
     public LocalFileStorageService(string? customRoot = null, ILogger<LocalFileStorageService>? logger = null)
     {
         _logger = logger;
-        _storageRoot = string.IsNullOrWhiteSpace(customRoot)
+        var root = string.IsNullOrWhiteSpace(customRoot)
             ? Path.Combine(Directory.GetCurrentDirectory(), "App_Data", "Storage")
             : customRoot;
 
         try
         {
-            _storageRoot = Path.GetFullPath(_storageRoot);
-            TryEnsureDirectoryExists();
+            root = Path.GetFullPath(root);
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Failed to resolve or initialize storage path '{StorageRoot}'", _storageRoot);
-            Console.Error.WriteLine($"[Storage Warning] Cannot initialize storage root '{_storageRoot}': {ex.Message}");
+            _logger?.LogWarning(ex, "Could not resolve storage path '{StorageRoot}'", root);
+        }
+
+        _storageRoot = root;
+
+        // Report writability once at startup rather than failing on the first upload.
+        if (TryVerifyWritable(out var error))
+        {
+            _logger?.LogInformation("File storage ready at '{StorageRoot}'.", _storageRoot);
+        }
+        else
+        {
+            _logger?.LogError(
+                "File storage at '{StorageRoot}' is NOT writable: {Error}. Uploads will fail until this is fixed " +
+                "(create the directory and grant the service account write access, or set Storage:LocalPath).",
+                _storageRoot, error);
         }
     }
 
-    private void TryEnsureDirectoryExists()
+    public bool TryVerifyWritable(out string? error)
     {
         try
         {
-            if (!Directory.Exists(_storageRoot))
+            Directory.CreateDirectory(_storageRoot);
+
+            // Creating the directory can succeed where writing a file does not, so probe for real.
+            var probe = Path.Combine(_storageRoot, $".write-probe-{Guid.NewGuid():N}");
+            using (var fs = new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
-                Directory.CreateDirectory(_storageRoot);
+                fs.WriteByte(0);
             }
+            File.Delete(probe);
+
+            error = null;
+            return true;
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Storage directory '{StorageRoot}' cannot be accessed or created: {Message}", _storageRoot, ex.Message);
-            Console.Error.WriteLine($"[Storage Warning] Cannot create or access '{_storageRoot}': {ex.Message}. Uploads will fail if the directory does not have write permissions.");
+            error = $"{ex.GetType().Name}: {ex.Message}";
+            return false;
         }
     }
 
     public async Task<string> UploadAsync(Stream stream, string fileName, string contentType, CancellationToken cancellationToken = default)
     {
-        if (!Directory.Exists(_storageRoot))
-        {
-            Directory.CreateDirectory(_storageRoot);
-        }
-
         var safeFileName = $"{Guid.NewGuid():N}_{Path.GetFileName(fileName)}";
         var fullPath = Path.Combine(_storageRoot, safeFileName);
 
-        await using var fileStream = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None);
-        await stream.CopyToAsync(fileStream, cancellationToken);
+        try
+        {
+            Directory.CreateDirectory(_storageRoot);
+
+            await using var fileStream = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            await stream.CopyToAsync(fileStream, cancellationToken);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+        {
+            _logger?.LogError(ex, "Failed to store upload '{FileName}' under '{StorageRoot}'.", fileName, _storageRoot);
+
+            throw new FileStorageException(
+                $"Cannot write uploads to '{_storageRoot}'. {ex.GetType().Name}: {ex.Message}",
+                _storageRoot,
+                ex);
+        }
 
         return safeFileName;
     }

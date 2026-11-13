@@ -2,6 +2,7 @@ using DigiRAG.Application.AI;
 using DigiRAG.Application.Common.Interfaces;
 using DigiRAG.Application.Retrieval;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
 using Pgvector;
 using Pgvector.EntityFrameworkCore;
 
@@ -62,9 +63,15 @@ public class RetrievalService : IRetrievalService
         int limit = 10,
         CancellationToken cancellationToken = default)
     {
-        // 1. Generate query embedding
+        // 1. Generate query embedding.
+        // Dimensions must be requested explicitly: gemini-embedding-001 defaults to 3072,
+        // while document_chunks.Embedding is vector(768). A mismatch fails at query time.
         var generator = _aiModelFactory.GetEmbeddingGenerator();
-        var embeddingResult = await generator.GenerateAsync(new[] { userQuery }, cancellationToken: cancellationToken);
+        var embeddingOptions = new EmbeddingGenerationOptions
+        {
+            Dimensions = _aiModelFactory.GetCurrentEmbeddingDimensions()
+        };
+        var embeddingResult = await generator.GenerateAsync(new[] { userQuery }, embeddingOptions, cancellationToken);
         var queryVector = embeddingResult[0].Vector.ToArray();
 
         // 2. Vector candidates (Top 30)

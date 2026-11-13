@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using DigiRAG.Application.Common.Exceptions;
 using DigiRAG.Application.Common.Interfaces;
 using DigiRAG.Application.Ingestion;
 using DigiRAG.Domain.Entities;
@@ -102,9 +103,22 @@ public class DocumentsController : ControllerBase
 
         // Upload to storage
         string storagePath;
-        await using (var uploadStream = file.OpenReadStream())
+        try
         {
+            await using var uploadStream = file.OpenReadStream();
             storagePath = await _fileStorage.UploadAsync(uploadStream, file.FileName, file.ContentType, ct);
+        }
+        catch (FileStorageException ex)
+        {
+            // An unwritable upload directory is a deployment problem, not a bad request.
+            // Report it explicitly instead of letting it become an empty HTTP 500.
+            return StatusCode(StatusCodes.Status500InternalServerError, new
+            {
+                error = "File storage is not writable.",
+                storageRoot = ex.StorageRoot,
+                detail = ex.Message,
+                hint = "Create the directory and grant the service account write access, or set Storage:LocalPath to a writable location."
+            });
         }
 
         // Create Document record

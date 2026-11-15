@@ -40,6 +40,30 @@ public class ModelProviderFactory : IAiModelFactory
         };
     }
 
+    public string GetCurrentChatModel()
+    {
+        return _settings.ActiveProvider switch
+        {
+            AiProviderType.Local => _settings.Local.ChatModel,
+            AiProviderType.OpenAI => _settings.OpenAI.ChatModel,
+            AiProviderType.AzureOpenAI => _settings.AzureOpenAI.ChatDeploymentName,
+            AiProviderType.Gemini => _settings.Gemini.ChatModel,
+            _ => _settings.Local.ChatModel
+        };
+    }
+
+    public string GetCurrentEmbeddingModel()
+    {
+        return _settings.ActiveProvider switch
+        {
+            AiProviderType.Local => _settings.Local.EmbeddingModel,
+            AiProviderType.OpenAI => _settings.OpenAI.EmbeddingModel,
+            AiProviderType.AzureOpenAI => _settings.AzureOpenAI.EmbeddingDeploymentName,
+            AiProviderType.Gemini => _settings.Gemini.EmbeddingModel,
+            _ => _settings.Local.EmbeddingModel
+        };
+    }
+
     public int GetCurrentEmbeddingDimensions()
     {
         return _settings.ActiveProvider switch

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DigiRAG.Application.AI;
 using DigiRAG.Application.Common.Interfaces;
 using DigiRAG.Application.Retrieval;
 using DigiRAG.Domain.Entities;
@@ -14,17 +15,20 @@ public class ChatController : ControllerBase
     private readonly IChatService _chatService;
     private readonly IApplicationDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
+    private readonly IAiModelFactory _aiModelFactory;
     private readonly ILogger<ChatController> _logger;
 
     public ChatController(
         IChatService chatService,
         IApplicationDbContext dbContext,
         ITenantContext tenantContext,
+        IAiModelFactory aiModelFactory,
         ILogger<ChatController> logger)
     {
         _chatService = chatService;
         _dbContext = dbContext;
         _tenantContext = tenantContext;
+        _aiModelFactory = aiModelFactory;
         _logger = logger;
     }
 
@@ -117,14 +121,24 @@ public class ChatController : ControllerBase
             // Retrieval needs an embedding from the configured AI provider before it touches
             // the database, so an unreachable model endpoint surfaces here. Without this the
             // client gets a bare HTTP 500 with an empty body and no way to tell why.
+            var chatModel = _aiModelFactory.GetCurrentChatModel();
+            var embeddingModel = _aiModelFactory.GetCurrentEmbeddingModel();
+
             _logger.LogError(ex,
-                "Chat stream failed for tenant {TenantId}. Check AiSettings:ActiveProvider and that the model endpoint is reachable.",
-                tenantId);
+                "Chat stream failed for tenant {TenantId} (chatModel={ChatModel}, embeddingModel={EmbeddingModel}).",
+                tenantId, chatModel, embeddingModel);
+
+            // Retrieval runs before generation, so citations arriving followed by a failure here
+            // means embeddings worked and only the chat model is at fault - almost always a model
+            // name the API key cannot serve.
+            var hint = ex.Message.Contains("404", StringComparison.Ordinal)
+                ? $" The chat model '{chatModel}' was not found. The embedding model is resolving fine, so the key is valid - this model name is likely unavailable to it. List what the key can use: GET https://generativelanguage.googleapis.com/v1beta/models?key=YOUR_KEY"
+                : string.Empty;
 
             var errorEvent = JsonSerializer.Serialize(new
             {
                 Type = "error",
-                Content = $"{ex.GetType().Name}: {ex.Message}"
+                Content = $"{ex.GetType().Name}: {ex.Message} [chatModel={chatModel}]{hint}"
             });
 
             // CancellationToken.None: ct may already be cancelled, and this last write is

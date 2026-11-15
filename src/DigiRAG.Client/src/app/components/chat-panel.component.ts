@@ -42,7 +42,7 @@ import { GenerativeAnswerComponent } from './generative-answer.component';
           </div>
 
           <!-- Turns -->
-          <article *ngFor="let msg of messages" class="turn" [class.user]="msg.role === 'user'">
+          <article *ngFor="let msg of messages; let i = index" class="turn" [class.user]="msg.role === 'user'">
             <ng-container *ngIf="msg.role === 'user'; else assistantTurn">
               <div class="user-bubble">{{ msg.content }}</div>
             </ng-container>
@@ -77,6 +77,32 @@ import { GenerativeAnswerComponent } from './generative-answer.component';
                   <span>{{ msg.errorText }}</span>
                 </div>
 
+                <!-- Hover actions, as ChatGPT puts under each reply. -->
+                <div class="actions" *ngIf="!msg.isStreaming && (msg.blocks?.length || msg.content)">
+                  <button (click)="copy(msg)" [title]="copiedIndex === i ? 'Copied' : 'Copy'">
+                    <svg *ngIf="copiedIndex !== i" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" />
+                    </svg>
+                    <svg *ngIf="copiedIndex === i" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="m20 6-11 11-5-5" />
+                    </svg>
+                  </button>
+                  <button (click)="rate(i, true)" [class.on]="msg.rating === 'up'" title="Good answer">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                         stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M7 10v11H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h3Zm0 0 4-7a2 2 0 0 1 3 2l-1 5h5a2 2 0 0 1 2 2.4l-1.4 7A2 2 0 0 1 16.6 21H7" />
+                    </svg>
+                  </button>
+                  <button (click)="rate(i, false)" [class.on]="msg.rating === 'down'" title="Bad answer">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                         stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M17 14V3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-3Zm0 0-4 7a2 2 0 0 1-3-2l1-5H6a2 2 0 0 1-2-2.4l1.4-7A2 2 0 0 1 7.4 3H17" />
+                    </svg>
+                  </button>
+                </div>
+
                 <div class="citations" *ngIf="msg.citations?.length">
                   <div class="citations-head">
                     Sources
@@ -108,13 +134,16 @@ import { GenerativeAnswerComponent } from './generative-answer.component';
                     [disabled]="isGenerating"
                     rows="1"
                     placeholder="Ask a question about your documents…"></textarea>
-          <button class="send" (click)="submit()" [disabled]="!draft.trim() || isGenerating"
+          <button *ngIf="!isGenerating" class="send" (click)="submit()" [disabled]="!draft.trim()"
                   aria-label="Send message">
-            <svg *ngIf="!isGenerating" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 19V5M5 12l7-7 7 7" />
             </svg>
-            <span *ngIf="isGenerating" class="stop-dot"></span>
+          </button>
+          <button *ngIf="isGenerating" class="send stop" (click)="stop.emit()"
+                  aria-label="Stop generating" title="Stop generating">
+            <span class="stop-dot"></span>
           </button>
         </div>
         <p class="hint">Enter to send · Shift + Enter for a new line</p>
@@ -337,10 +366,21 @@ import { GenerativeAnswerComponent } from './generative-answer.component';
     .send:hover:enabled { background: var(--accent-hover); }
     .send:disabled { opacity: 0.35; cursor: not-allowed; }
     .send svg { width: 17px; height: 17px; }
-    .stop-dot {
-      width: 11px; height: 11px; border-radius: 2px; background: #fff;
-      animation: blink 1.05s step-end infinite;
+    .send.stop { background: var(--bg-hover); border: 1px solid var(--border-strong); }
+    .send.stop:hover { background: var(--bg-input); }
+    .stop-dot { width: 10px; height: 10px; border-radius: 2px; background: var(--text); }
+
+    /* Reply actions */
+    .actions { display: flex; gap: 2px; margin-top: 10px; opacity: 0; transition: opacity 0.15s; }
+    .turn:hover .actions, .actions:focus-within { opacity: 1; }
+    .actions button {
+      display: grid; place-items: center; width: 26px; height: 26px;
+      border-radius: var(--radius-sm); color: var(--text-faint);
+      transition: background 0.15s, color 0.15s;
     }
+    .actions button:hover { background: var(--bg-hover); color: var(--text); }
+    .actions button.on { color: var(--accent); background: var(--accent-soft); }
+    .actions button svg { width: 14px; height: 14px; }
 
     .hint {
       max-width: var(--chat-max-width); margin: 7px auto 0;
@@ -362,6 +402,48 @@ export class ChatPanelComponent implements AfterViewChecked {
   @Output() send = new EventEmitter<string>();
   @Output() clear = new EventEmitter<void>();
   @Output() openCitation = new EventEmitter<Citation>();
+  @Output() stop = new EventEmitter<void>();
+  @Output() feedback = new EventEmitter<{ index: number; isPositive: boolean }>();
+
+  copiedIndex = -1;
+
+  /** Flattens an answer back to plain text for the clipboard. */
+  copy(msg: ChatMessageUI): void {
+    const text = msg.blocks?.length ? this.blocksToText(msg.blocks) : msg.content;
+    navigator.clipboard?.writeText(text).then(() => {
+      this.copiedIndex = this.messages.indexOf(msg);
+      setTimeout(() => (this.copiedIndex = -1), 1600);
+    });
+  }
+
+  private blocksToText(blocks: NonNullable<ChatMessageUI['blocks']>): string {
+    return blocks
+      .map(b => {
+        switch (b.type) {
+          case 'heading':
+          case 'paragraph':
+          case 'callout':
+          case 'code':
+            return b.text;
+          case 'bullets':
+            return b.items.map(i => `- ${i}`).join('\n');
+          case 'steps':
+            return b.items.map((i, n) => `${n + 1}. ${i}`).join('\n');
+          case 'facts':
+            return b.items.map(f => `${f.label}: ${f.value}`).join('\n');
+          case 'table':
+            return [b.headers.join(' | '), ...b.rows.map(r => r.join(' | '))].join('\n');
+          default:
+            return '';
+        }
+      })
+      .filter(Boolean)
+      .join('\n\n');
+  }
+
+  rate(index: number, isPositive: boolean): void {
+    this.feedback.emit({ index, isPositive });
+  }
 
   @ViewChild('scroller') private scroller?: ElementRef<HTMLDivElement>;
 

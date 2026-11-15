@@ -21,6 +21,23 @@ export interface DocumentItem {
   createdAtUtc: string;
 }
 
+export interface ChatSession {
+  id: string;
+  title: string;
+  createdAtUtc: string;
+  knowledgeBaseId?: string;
+}
+
+/** MessageRole on the server: 0 = User, 1 = Assistant, 2 = System. */
+export interface StoredMessage {
+  id: string;
+  chatSessionId: string;
+  role: number;
+  content: string;
+  createdAtUtc: string;
+  citations?: Citation[];
+}
+
 export interface Citation {
   documentId: string;
   chunkId: string;
@@ -52,6 +69,10 @@ export interface ChatMessageUI {
   isStreaming?: boolean;
   /** Set when the stream reported a failure, rendered separately from the answer text. */
   errorText?: string;
+  /** Thumbs rating already submitted for this reply. */
+  rating?: 'up' | 'down';
+  /** Server-side message id, present only for replies loaded from history. */
+  messageId?: string;
 }
 
 export const DOCUMENT_STATUS: Record<number, { label: string; className: string }> = {
@@ -68,6 +89,30 @@ export function statusLabel(status: number): string {
 
 export function statusClass(status: number): string {
   return DOCUMENT_STATUS[status]?.className ?? '';
+}
+
+/**
+ * Restores UI blocks from a stored answer. Assistant replies are persisted as the
+ * raw newline-delimited JSON the model produced, so a reloaded conversation has to
+ * be parsed back into blocks or it would display as JSON source.
+ */
+export function parseBlocks(content: string): UiBlock[] {
+  const blocks: UiBlock[] = [];
+  for (const line of (content || '').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed.type === 'string') {
+        blocks.push(parsed as UiBlock);
+        continue;
+      }
+    } catch {
+      // Older answers were stored as plain prose.
+    }
+    blocks.push({ type: 'paragraph', text: trimmed });
+  }
+  return blocks;
 }
 
 export function formatBytes(bytes: number): string {

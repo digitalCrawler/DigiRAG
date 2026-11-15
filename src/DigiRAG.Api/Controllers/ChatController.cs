@@ -59,19 +59,29 @@ public class ChatController : ControllerBase
     }
 
     [HttpGet("sessions")]
-    public async Task<ActionResult<List<ChatSession>>> GetSessions(CancellationToken ct)
+    public async Task<ActionResult<object>> GetSessions(CancellationToken ct)
     {
         var tenantId = RequireTenantId();
+
+        // Projected rather than returned as entities: the navigation properties form
+        // cycles (session -> messages -> session) that the serializer cannot follow.
         var sessions = await _dbContext.ChatSessions
             .Where(s => s.TenantId == tenantId)
             .OrderByDescending(s => s.CreatedAtUtc)
+            .Select(s => new
+            {
+                s.Id,
+                s.Title,
+                s.CreatedAtUtc,
+                s.KnowledgeBaseId
+            })
             .ToListAsync(ct);
 
         return Ok(sessions);
     }
 
     [HttpGet("sessions/{id}/messages")]
-    public async Task<ActionResult<List<ChatMessage>>> GetSessionMessages(Guid id, CancellationToken ct)
+    public async Task<ActionResult<object>> GetSessionMessages(Guid id, CancellationToken ct)
     {
         var tenantId = RequireTenantId();
         var sessionExists = await _dbContext.ChatSessions
@@ -82,10 +92,28 @@ public class ChatController : ControllerBase
             return NotFound();
         }
 
+        // Returning the entities threw "A possible object cycle was detected" because
+        // ChatCitation has a ChatMessage back-reference, so this endpoint never worked.
         var messages = await _dbContext.ChatMessages
             .Where(m => m.ChatSessionId == id)
-            .Include(m => m.Citations)
             .OrderBy(m => m.CreatedAtUtc)
+            .Select(m => new
+            {
+                m.Id,
+                m.ChatSessionId,
+                Role = (int)m.Role,
+                m.Content,
+                m.CreatedAtUtc,
+                Citations = m.Citations.Select(c => new
+                {
+                    c.DocumentId,
+                    c.ChunkId,
+                    c.DocumentName,
+                    c.PageNumber,
+                    c.HeadingPath,
+                    c.Excerpt
+                }).ToList()
+            })
             .ToListAsync(ct);
 
         return Ok(messages);

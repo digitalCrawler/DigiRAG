@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using DigiRAG.Application.AI;
 using DigiRAG.Application.Common.Interfaces;
 using DigiRAG.Application.Retrieval;
@@ -53,22 +54,73 @@ public class ChatService : IChatService
 
         if (trimmed.StartsWith('{'))
         {
-            try
+            var parsed = TryParseBlock(trimmed);
+            if (parsed is not null) return parsed;
+
+            // Still not valid JSON. Salvage the prose out of it rather than showing the
+            // user raw JSON source, which is what a malformed block used to produce.
+            var salvaged = ExtractTextField(trimmed);
+            if (salvaged is not null)
             {
-                using var doc = JsonDocument.Parse(trimmed);
-                if (doc.RootElement.ValueKind == JsonValueKind.Object &&
-                    doc.RootElement.TryGetProperty("type", out _))
-                {
-                    return trimmed;
-                }
-            }
-            catch (JsonException)
-            {
-                // Fall through and present it as prose.
+                return JsonSerializer.Serialize(new { type = "paragraph", text = salvaged });
             }
         }
 
         return JsonSerializer.Serialize(new { type = "paragraph", text = trimmed });
+    }
+
+    /// <summary>
+    /// Parses one block, repairing the brace errors smaller models make - most often a
+    /// duplicated closing brace, occasionally a missing one or a trailing comma.
+    /// Each candidate is validated by parsing, so a repair can never corrupt a good block.
+    /// </summary>
+    private static string? TryParseBlock(string candidate)
+    {
+        var attempts = new[]
+        {
+            candidate,
+            // Duplicated closing brace: "...\"}}" -> "...\"}"
+            candidate.TrimEnd('}') + "}",
+            // Missing the closing brace entirely.
+            candidate + "}",
+            // Trailing comma before the close: "...,}" -> "...}"
+            candidate.TrimEnd('}').TrimEnd(',', ' ') + "}"
+        };
+
+        foreach (var attempt in attempts)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(attempt);
+                if (doc.RootElement.ValueKind == JsonValueKind.Object &&
+                    doc.RootElement.TryGetProperty("type", out _))
+                {
+                    return attempt;
+                }
+            }
+            catch (JsonException)
+            {
+                // Try the next repair.
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Pulls the "text" value out of an object that will not parse.</summary>
+    private static string? ExtractTextField(string candidate)
+    {
+        var match = Regex.Match(candidate, "\"text\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"");
+        if (!match.Success) return null;
+
+        try
+        {
+            return JsonSerializer.Deserialize<string>($"\"{match.Groups[1].Value}\"");
+        }
+        catch (JsonException)
+        {
+            return match.Groups[1].Value;
+        }
     }
 
     public async IAsyncEnumerable<ChatStreamEvent> StreamChatResponseAsync(

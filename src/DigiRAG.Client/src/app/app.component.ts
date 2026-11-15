@@ -1,8 +1,18 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { firstValueFrom } from 'rxjs';
 import { ApiService } from './api.service';
-import { ChatMessageUI, Citation, DocumentItem, KnowledgeBase, Tenant } from './models';
+import {
+  ChatMessageUI,
+  ChatSession,
+  Citation,
+  DocumentItem,
+  KnowledgeBase,
+  parseBlocks,
+  Tenant
+} from './models';
 import { AppHeaderComponent } from './components/app-header.component';
+import { SessionSidebarComponent } from './components/session-sidebar.component';
 import { KnowledgeBasePanelComponent } from './components/knowledge-base-panel.component';
 import { DocumentPanelComponent } from './components/document-panel.component';
 import { ChatPanelComponent } from './components/chat-panel.component';
@@ -14,6 +24,7 @@ import { CitationDialogComponent } from './components/citation-dialog.component'
   imports: [
     CommonModule,
     AppHeaderComponent,
+    SessionSidebarComponent,
     KnowledgeBasePanelComponent,
     DocumentPanelComponent,
     ChatPanelComponent,
@@ -30,7 +41,23 @@ import { CitationDialogComponent } from './components/citation-dialog.component'
 
       <div class="body">
         <aside class="sidebar">
+          <!-- One rail, two modes: conversations by default (as ChatGPT does),
+               with the knowledge base and its documents one click away. -->
+          <div class="tabs" role="tablist">
+            <button role="tab" [class.on]="tab() === 'chats'" (click)="tab.set('chats')">Chats</button>
+            <button role="tab" [class.on]="tab() === 'knowledge'" (click)="tab.set('knowledge')">Knowledge</button>
+          </div>
+
+          <app-session-sidebar
+            *ngIf="tab() === 'chats'"
+            [sessions]="sessions()"
+            [activeSessionId]="activeSessionId()"
+            (newChat)="startNewChat()"
+            (select)="openSession($event)">
+          </app-session-sidebar>
+
           <app-knowledge-base-panel
+            *ngIf="tab() === 'knowledge'"
             [knowledgeBases]="knowledgeBases()"
             [selectedKbId]="selectedKbId()"
             [error]="apiError()"
@@ -53,7 +80,9 @@ import { CitationDialogComponent } from './components/citation-dialog.component'
             [isGenerating]="isGenerating()"
             [scopeName]="selectedKbName()"
             (send)="sendMessage($event)"
-            (clear)="chatMessages.set([])"
+            (stop)="stopGenerating()"
+            (feedback)="rateMessage($event)"
+            (clear)="startNewChat()"
             (openCitation)="activeCitation.set($event)">
           </app-chat-panel>
         </main>
@@ -81,6 +110,18 @@ import { CitationDialogComponent } from './components/citation-dialog.component'
 
     .main { flex: 1; min-width: 0; }
 
+    .tabs {
+      display: flex; gap: 2px; flex: none;
+      padding: 10px 12px 0;
+    }
+    .tabs button {
+      flex: 1; padding: 7px 0; border-radius: var(--radius-sm);
+      font-size: 12.5px; font-weight: 500; color: var(--text-faint);
+      transition: background 0.15s, color 0.15s;
+    }
+    .tabs button:hover { color: var(--text); }
+    .tabs button.on { background: var(--bg-raised); color: var(--text); }
+
     @media (max-width: 860px) {
       .sidebar { width: 240px; }
     }
@@ -100,6 +141,13 @@ export class AppComponent implements OnInit {
 
   readonly chatMessages = signal<ChatMessageUI[]>([]);
   readonly isGenerating = signal<boolean>(false);
+
+  readonly tab = signal<'chats' | 'knowledge'>('chats');
+  readonly sessions = signal<ChatSession[]>([]);
+  readonly activeSessionId = signal<string>('');
+
+  /** Lets the Stop button abort an in-flight stream. */
+  private abort: AbortController | null = null;
 
   readonly activeCitation = signal<Citation | null>(null);
 
@@ -124,6 +172,7 @@ export class AppComponent implements OnInit {
         if (list.length > 0 && !this.selectedTenantId()) {
           this.selectedTenantId.set(list[0].id);
           this.loadKnowledgeBases();
+          this.loadSessions();
         }
       },
       error: err => {
@@ -140,6 +189,8 @@ export class AppComponent implements OnInit {
     this.selectedKbId.set('');
     this.documents.set([]);
     this.loadKnowledgeBases();
+    this.loadSessions();
+    this.startNewChat();
   }
 
   promptNewTenant(): void {
@@ -226,10 +277,89 @@ export class AppComponent implements OnInit {
     });
   }
 
+  // --- Conversations ------------------------------------------------------
+
+  loadSessions(): void {
+    const tenantId = this.selectedTenantId();
+    if (!tenantId) return;
+    this.api.getSessions(tenantId).subscribe({
+      next: list => this.sessions.set(list)
+    });
+  }
+
+  startNewChat(): void {
+    this.stopGenerating();
+    this.activeSessionId.set('');
+    this.chatMessages.set([]);
+  }
+
+  openSession(sessionId: string): void {
+    this.stopGenerating();
+    this.activeSessionId.set(sessionId);
+    this.api.getSessionMessages(this.selectedTenantId(), sessionId).subscribe({
+      next: stored => {
+        this.chatMessages.set(
+          stored.map(m => {
+            if (m.role === 0) {
+              return { role: 'user', content: m.content } as ChatMessageUI;
+            }
+            // Answers are persisted as the raw block stream, so rebuild the blocks.
+            return {
+              role: 'assistant',
+              content: m.content,
+              blocks: parseBlocks(m.content),
+              citations: m.citations ?? [],
+              messageId: m.id
+            } as ChatMessageUI;
+          })
+        );
+      },
+      error: () => this.chatMessages.set([])
+    });
+  }
+
+  rateMessage(event: { index: number; isPositive: boolean }): void {
+    const sessionId = this.activeSessionId();
+    if (!sessionId) return;
+
+    const msg = this.chatMessages()[event.index];
+    const rating = event.isPositive ? 'up' : 'down';
+
+    this.chatMessages.update(msgs => {
+      const copy = [...msgs];
+      copy[event.index] = { ...copy[event.index], rating };
+      return copy;
+    });
+
+    this.api
+      .submitFeedback(this.selectedTenantId(), sessionId, msg?.messageId ?? null, event.isPositive)
+      .subscribe({ error: () => undefined });
+  }
+
+  stopGenerating(): void {
+    this.abort?.abort();
+    this.abort = null;
+  }
+
   // --- Chat ---------------------------------------------------------------
 
   async sendMessage(question: string): Promise<void> {
     if (this.isGenerating()) return;
+
+    // ChatGPT creates the conversation on the first message; the server only
+    // persists the exchange when a sessionId is supplied.
+    if (!this.activeSessionId()) {
+      const title = question.length > 48 ? question.slice(0, 48) + '…' : question;
+      try {
+        const session = await firstValueFrom(
+          this.api.createSession(this.selectedTenantId(), title)
+        );
+        this.activeSessionId.set(session.id);
+        this.sessions.update(list => [session, ...list]);
+      } catch {
+        // History is a convenience; a failure here must not block answering.
+      }
+    }
 
     this.chatMessages.update(msgs => [...msgs, { role: 'user', content: question }]);
     const index = this.chatMessages().length;
@@ -248,17 +378,30 @@ export class AppComponent implements OnInit {
       });
     };
 
+    this.abort = new AbortController();
+
     try {
-      await this.api.streamChat(this.selectedTenantId(), this.selectedKbId() || null, question, {
-        // Replace the array rather than pushing, so change detection sees a new reference.
-        onBlock: block => patch(m => (m.blocks = [...(m.blocks ?? []), block])),
-        onToken: text => patch(m => (m.content += text)),
-        onCitations: citations => patch(m => (m.citations = citations)),
-        onError: message => patch(m => (m.errorText = message))
-      });
+      await this.api.streamChat(
+        this.selectedTenantId(),
+        this.selectedKbId() || null,
+        question,
+        {
+          // Replace the array rather than pushing, so change detection sees a new reference.
+          onBlock: block => patch(m => (m.blocks = [...(m.blocks ?? []), block])),
+          onToken: text => patch(m => (m.content += text)),
+          onCitations: citations => patch(m => (m.citations = citations)),
+          onError: message => patch(m => (m.errorText = message))
+        },
+        this.activeSessionId() || null,
+        this.abort.signal
+      );
     } catch (err: any) {
-      patch(m => (m.errorText = err?.message ?? 'Unknown error'));
+      // Aborting is the user pressing Stop, not a failure.
+      if (err?.name !== 'AbortError') {
+        patch(m => (m.errorText = err?.message ?? 'Unknown error'));
+      }
     } finally {
+      this.abort = null;
       this.isGenerating.set(false);
       patch(m => (m.isStreaming = false));
     }

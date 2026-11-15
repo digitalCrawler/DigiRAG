@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../environments/environment';
-import { Citation, DocumentItem, KnowledgeBase, Tenant, UiBlock } from './models';
+import { ChatSession, Citation, DocumentItem, KnowledgeBase, StoredMessage, Tenant, UiBlock } from './models';
 
 export interface ChatStreamHandlers {
   onCitations: (citations: Citation[]) => void;
@@ -43,6 +43,40 @@ export class ApiService {
     );
   }
 
+  // --- Conversations ------------------------------------------------------
+
+  getSessions(tenantId: string): Observable<ChatSession[]> {
+    return this.http.get<ChatSession[]>(`${this.apiUrl}/chat/sessions`, {
+      headers: this.headers(tenantId)
+    });
+  }
+
+  createSession(tenantId: string, title: string): Observable<ChatSession> {
+    // The endpoint binds [FromBody] string, so the body must be a JSON string literal.
+    return this.http.post<ChatSession>(`${this.apiUrl}/chat/sessions`, JSON.stringify(title), {
+      headers: this.headers(tenantId).set('Content-Type', 'application/json')
+    });
+  }
+
+  getSessionMessages(tenantId: string, sessionId: string): Observable<StoredMessage[]> {
+    return this.http.get<StoredMessage[]>(`${this.apiUrl}/chat/sessions/${sessionId}/messages`, {
+      headers: this.headers(tenantId)
+    });
+  }
+
+  submitFeedback(
+    tenantId: string,
+    sessionId: string,
+    messageId: string | null,
+    isPositive: boolean
+  ): Observable<unknown> {
+    return this.http.post(
+      `${this.apiUrl}/chat/feedback`,
+      { sessionId, messageId, isPositive, comment: null },
+      { headers: this.headers(tenantId) }
+    );
+  }
+
   getDocuments(tenantId: string, kbId: string): Observable<DocumentItem[]> {
     return this.http.get<DocumentItem[]>(`${this.apiUrl}/knowledge-bases/${kbId}/documents`, {
       headers: this.headers(tenantId)
@@ -73,7 +107,9 @@ export class ApiService {
     tenantId: string,
     knowledgeBaseId: string | null,
     message: string,
-    handlers: ChatStreamHandlers
+    handlers: ChatStreamHandlers,
+    sessionId: string | null = null,
+    signal?: AbortSignal
   ): Promise<void> {
     const response = await fetch(`${this.apiUrl}/chat/stream`, {
       method: 'POST',
@@ -81,7 +117,10 @@ export class ApiService {
         'Content-Type': 'application/json',
         'X-Tenant-Id': tenantId
       },
-      body: JSON.stringify({ knowledgeBaseId: knowledgeBaseId || null, message })
+      // sessionId is what makes the server persist the exchange, so the
+      // conversation is still there after a reload.
+      body: JSON.stringify({ sessionId, knowledgeBaseId: knowledgeBaseId || null, message }),
+      signal
     });
 
     // A 500 with an empty body would otherwise produce a blank answer with no

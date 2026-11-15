@@ -2,10 +2,12 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../environments/environment';
-import { Citation, DocumentItem, KnowledgeBase, Tenant } from './models';
+import { Citation, DocumentItem, KnowledgeBase, Tenant, UiBlock } from './models';
 
 export interface ChatStreamHandlers {
   onCitations: (citations: Citation[]) => void;
+  /** One generative-UI block, emitted as soon as its line completes server-side. */
+  onBlock: (block: UiBlock) => void;
   onToken: (text: string) => void;
   onError: (message: string) => void;
 }
@@ -107,7 +109,15 @@ export class ApiService {
         if (!frame.startsWith('data: ')) continue;
         try {
           const evt = JSON.parse(frame.slice(6));
-          if (evt.Type === 'token') {
+          if (evt.Type === 'block') {
+            // Content is the raw JSON for one UI block. The server already
+            // validated it and wrapped anything unparseable as a paragraph.
+            try {
+              handlers.onBlock(JSON.parse(evt.Content) as UiBlock);
+            } catch {
+              handlers.onBlock({ type: 'paragraph', text: evt.Content ?? '' });
+            }
+          } else if (evt.Type === 'token') {
             handlers.onToken(evt.Content ?? '');
           } else if (evt.Type === 'citations') {
             handlers.onCitations(evt.Citations ?? []);

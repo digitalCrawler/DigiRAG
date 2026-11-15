@@ -235,7 +235,7 @@ export class AppComponent implements OnInit {
     const index = this.chatMessages().length;
     this.chatMessages.update(msgs => [
       ...msgs,
-      { role: 'assistant', content: '', citations: [], isStreaming: true }
+      { role: 'assistant', content: '', blocks: [], citations: [], isStreaming: true }
     ]);
     this.isGenerating.set(true);
 
@@ -250,6 +250,8 @@ export class AppComponent implements OnInit {
 
     try {
       await this.api.streamChat(this.selectedTenantId(), this.selectedKbId() || null, question, {
+        // Replace the array rather than pushing, so change detection sees a new reference.
+        onBlock: block => patch(m => (m.blocks = [...(m.blocks ?? []), block])),
         onToken: text => patch(m => (m.content += text)),
         onCitations: citations => patch(m => (m.citations = citations)),
         onError: message => patch(m => (m.errorText = message))

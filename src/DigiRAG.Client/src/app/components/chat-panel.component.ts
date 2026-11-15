@@ -10,11 +10,13 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ChatMessageUI, Citation } from '../models';
+import { MarkdownPipe } from '../markdown.pipe';
+import { GenerativeAnswerComponent } from './generative-answer.component';
 
 @Component({
   selector: 'app-chat-panel',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, MarkdownPipe, GenerativeAnswerComponent],
   template: `
     <section class="chat">
       <div class="chat-bar">
@@ -56,10 +58,17 @@ import { ChatMessageUI, Citation } from '../models';
               <div class="answer">
                 <div class="who">DigiRAG</div>
 
-                <div class="prose" *ngIf="msg.content">{{ msg.content }}<span
-                  class="caret" *ngIf="msg.isStreaming"></span></div>
+                <!-- Generative UI: the model chose these components. -->
+                <app-generative-answer *ngIf="msg.blocks?.length"
+                                       [blocks]="msg.blocks!"></app-generative-answer>
 
-                <div class="thinking" *ngIf="!msg.content && msg.isStreaming && !msg.errorText">
+                <!-- Fallback for plain prose, e.g. a provider that ignored the block format. -->
+                <div class="prose" *ngIf="!msg.blocks?.length && msg.content"
+                     [class.streaming]="msg.isStreaming"
+                     [innerHTML]="msg.content | markdown"></div>
+
+                <div class="thinking"
+                     *ngIf="!msg.blocks?.length && !msg.content && msg.isStreaming && !msg.errorText">
                   <span></span><span></span><span></span>
                 </div>
 
@@ -180,16 +189,74 @@ import { ChatMessageUI, Citation } from '../models';
     .answer { flex: 1; min-width: 0; }
     .who { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 5px; }
 
-    /* pre-wrap keeps the model's line breaks without interpreting any markup,
-       so nothing the model emits can inject HTML. */
+    /* Rendered Markdown. Angular sanitizes the bound HTML, so model output
+       cannot introduce scripts or event handlers. */
     .prose {
       font-size: 14.5px; line-height: 1.68; color: var(--text);
-      white-space: pre-wrap; overflow-wrap: anywhere;
+      overflow-wrap: anywhere;
     }
 
-    .caret {
-      display: inline-block; width: 7px; height: 15px;
-      margin-left: 2px; vertical-align: text-bottom;
+    /* Markdown arrives through innerHTML, so these elements never receive this
+       component's style-scoping attribute. ::ng-deep pierces that, and the :host
+       prefix keeps the rules from leaking out of the chat panel. */
+    :host ::ng-deep .prose > :first-child { margin-top: 0; }
+    :host ::ng-deep .prose > :last-child { margin-bottom: 0; }
+    :host ::ng-deep .prose :is(p, ul, ol, pre, table, blockquote) { margin: 0 0 12px; }
+
+    :host ::ng-deep .prose :is(h1, h2, h3, h4) {
+      font-size: 15px; font-weight: 650; letter-spacing: -0.01em;
+      margin: 18px 0 8px; color: var(--text);
+    }
+    :host ::ng-deep .prose h1 { font-size: 17px; }
+    :host ::ng-deep .prose h2 { font-size: 16px; }
+
+    :host ::ng-deep .prose strong { font-weight: 650; color: #fff; }
+    :host ::ng-deep .prose em { font-style: italic; color: var(--text-muted); }
+
+    :host ::ng-deep .prose :is(ul, ol) { padding-left: 22px; }
+    :host ::ng-deep .prose li { margin: 3px 0; }
+    :host ::ng-deep .prose li::marker { color: var(--text-faint); }
+    :host ::ng-deep .prose li > :is(ul, ol) { margin: 4px 0 2px; }
+
+    :host ::ng-deep .prose a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+
+    :host ::ng-deep .prose code {
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--bg-input); border: 1px solid var(--border);
+      border-radius: 4px; padding: 1px 5px;
+    }
+    :host ::ng-deep .prose pre {
+      background: var(--bg-input); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 12px 14px; overflow-x: auto;
+    }
+    :host ::ng-deep .prose pre code { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.6; }
+
+    :host ::ng-deep .prose blockquote {
+      border-left: 2px solid var(--border-strong);
+      padding-left: 12px; color: var(--text-muted);
+    }
+
+    :host ::ng-deep .prose table { border-collapse: collapse; width: 100%; font-size: 13px; display: block; overflow-x: auto; }
+    :host ::ng-deep .prose :is(th, td) { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+    :host ::ng-deep .prose th { background: var(--bg-input); font-weight: 600; }
+
+    :host ::ng-deep .prose hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+    /* Superscript refs matching the numbered citation chips. */
+    :host ::ng-deep .prose .cite-ref {
+      display: inline-block; min-width: 15px; height: 15px; line-height: 15px;
+      margin: 0 1px; padding: 0 4px; border-radius: 20px;
+      background: var(--accent-soft); color: var(--accent);
+      font-size: 9.5px; font-weight: 600; text-align: center;
+      vertical-align: super;
+    }
+
+    /* Caret rides the end of the last rendered block while tokens arrive. */
+    :host ::ng-deep .prose.streaming > :last-child::after {
+      content: '';
+      display: inline-block; width: 7px; height: 14px;
+      margin-left: 3px; vertical-align: text-bottom;
       background: var(--accent); border-radius: 1px;
       animation: blink 1.05s step-end infinite;
     }

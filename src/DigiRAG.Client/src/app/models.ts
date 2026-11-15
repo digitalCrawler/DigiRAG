@@ -30,9 +30,24 @@ export interface Citation {
   excerpt: string;
 }
 
+/**
+ * Generative UI: the model chooses the component for each part of its answer and
+ * emits one of these per line, rather than returning prose we then have to guess at.
+ */
+export type UiBlock =
+  | { type: 'heading'; text: string }
+  | { type: 'paragraph'; text: string }
+  | { type: 'bullets'; items: string[] }
+  | { type: 'steps'; items: string[] }
+  | { type: 'facts'; items: { label: string; value: string }[] }
+  | { type: 'table'; headers: string[]; rows: string[][] }
+  | { type: 'callout'; tone?: 'info' | 'warn' | 'success'; text: string }
+  | { type: 'code'; language?: string; text: string };
+
 export interface ChatMessageUI {
   role: 'user' | 'assistant';
   content: string;
+  blocks?: UiBlock[];
   citations?: Citation[];
   isStreaming?: boolean;
   /** Set when the stream reported a failure, rendered separately from the answer text. */

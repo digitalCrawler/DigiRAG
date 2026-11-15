@@ -50,9 +50,13 @@ public class GeminiOptions
 {
     public string ApiKey { get; set; } = string.Empty;
 
-    // gemini-1.5-flash was retired and gemini-2.0-flash was shut down on 2026-06-01.
-    // gemini-2.5-flash is the current stable price/performance model.
-    public string ChatModel { get; set; } = "gemini-2.5-flash";
+    // A rolling alias rather than a pinned version. gemini-1.5-flash was retired,
+    // gemini-2.0-flash was shut down on 2026-06-01, and 2.5-series models return 404 for
+    // API keys whose project never used them - which is what broke chat here. The alias
+    // always resolves to the current Flash-Lite (the cheapest tier, which suits free-tier
+    // quotas) and Google gives two weeks' notice before changing what sits behind it.
+    // Pin an explicit version here if reproducible behaviour ever matters more than currency.
+    public string ChatModel { get; set; } = "gemini-flash-lite-latest";
 
     // text-embedding-004 was shut down on 2026-01-14. gemini-embedding-001 replaces it,
     // but it returns 3072 dimensions unless a smaller size is requested explicitly -

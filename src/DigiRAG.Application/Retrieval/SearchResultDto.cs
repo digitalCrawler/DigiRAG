@@ -8,7 +8,15 @@ public class SearchResultDto
     public int? PageNumber { get; set; }
     public string? HeadingPath { get; set; }
     public string Content { get; set; } = string.Empty;
+    /// <summary>Fusion score. Rewritten by Reciprocal Rank Fusion, so it ranks but does not measure.</summary>
     public double Score { get; set; }
+
+    /// <summary>
+    /// Raw cosine similarity against the query, kept separately because RRF overwrites
+    /// Score with a rank-derived value (~0.016) that cannot answer "is this relevant at all".
+    /// </summary>
+    public double VectorScore { get; set; }
+
     public double? RerankScore { get; set; }
 }
 

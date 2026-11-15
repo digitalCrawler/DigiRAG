@@ -15,6 +15,15 @@ public class AiSettings
     /// </summary>
     public int MaxContextChunks { get; set; } = 3;
 
+    /// <summary>
+    /// Minimum cosine similarity for a retrieved chunk to count as relevant. Vector search
+    /// always returns its nearest neighbours, however far away they are, so without a floor
+    /// a greeting comes back with the three least-unrelated chunks presented as sources.
+    /// The useful range depends on the embedding model; 0.55 suits gemini-embedding-001
+    /// and nomic-embed-text. Lower it if good answers are being refused.
+    /// </summary>
+    public double MinRelevanceScore { get; set; } = 0.55;
+
     public LocalModelOptions Local { get; set; } = new();
     public OpenAiOptions OpenAI { get; set; } = new();
     public AzureOpenAiOptions AzureOpenAI { get; set; } = new();

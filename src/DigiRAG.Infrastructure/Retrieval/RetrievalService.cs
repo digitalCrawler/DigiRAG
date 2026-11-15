@@ -49,7 +49,8 @@ public class RetrievalService : IRetrievalService
                 PageNumber = c.PageNumber,
                 HeadingPath = c.HeadingPath,
                 Content = c.Content,
-                Score = 1.0 - (double)c.Embedding!.CosineDistance(targetVector)
+                Score = 1.0 - (double)c.Embedding!.CosineDistance(targetVector),
+                VectorScore = 1.0 - (double)c.Embedding!.CosineDistance(targetVector)
             })
             .ToListAsync(cancellationToken);
 
